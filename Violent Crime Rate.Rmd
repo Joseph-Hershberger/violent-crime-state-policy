@@ -1,0 +1,581 @@
+---
+title: "Violent Crime, Economics, and State Policy"
+output: html_document
+date: "2026-10-08"
+---
+Violent Crime Analysis 2015-2024
+
+For this project, I will examine violent crime rates in each U.S. state over the ten years from 2015 to 2024. I will begin by ranking the states with the highest and lowest violent crime rates in 2015 and 2024, and then look at which states saw the largest increases and decreases over the decade. I left out Washington, D.C., because it is entirely urban and not comparable to the states.
+
+I will then explore what may explain these differences. First, I will look at two economic factors often linked to crime, poverty and unemployment, to see whether they are connected to higher or lower violent crime rates. Next, I will look at policies that states have used to try to reduce violent crime. These include red-flag laws, which address access to guns; Clean Slate laws, which aim to lower reoffending by clearing old criminal records; and Medicaid expansion, which increases access to mental health care and addiction treatment. For each of these, I will compare states that adopted the policy with states that did not. I will also look at imprisonment rates to see whether states that put more people in prison have less violent crime. Finally, I will use regression analysis to test how strongly each of these factors is connected to violent crime.
+
+While this project examines several important factors, they are not the only influences on violent crime. Many other factors contribute, and this analysis is meant to explore some of the most commonly studied ones rather than provide a complete explanation.
+```{r setup, include=FALSE}
+library(tidyverse)
+library(fixest)
+```
+
+
+```{r cars}
+Violent_Crime <- read.csv("crime_states.csv")
+
+```
+
+```{r}
+crime_2024 <- Violent_Crime %>%
+  filter(year >= 2015,
+         state != "District of Columbia")
+```
+
+```{r}
+crime_2024 %>%
+  filter(year == 2015) %>%
+  arrange(desc(violentRate)) %>%
+  mutate(rank = row_number()) %>%
+  select(rank, state, violentRate) %>%
+  head(50)
+```
+
+This table ranks all 50 states by their violent crime rate in 2015, measured as violent crimes per 100,000 residents. Alaska had the highest rate (730.8) and Vermont the lowest (119.3). The gap between them is about 611 per 100,000, meaning Alaska’s violent crime rate was roughly six times more than Vermont’s. The typical (median) state had a rate of about 350, so the states at the top of the list had roughly twice the violent crime of an average state.There is also a clear regional pattern. Six of the ten highest-rate states are in the South (Tennessee, Louisiana, Arkansas, Delaware, South Carolina and Alabama), and three are in the West (Alaska, Nevada and New Mexico). The lowest rates, by contrast, cluster in two regions. Four of the ten lowest are in New England: Vermont, Maine, New Hampshire and Connecticut, three of which border one another. Three more are in the Mountain West: Utah, Idaho and Wyoming. Many of the lowest-rate states are also among the most rural and least densely populated in the country, which matters because violent crime tends to concentrate in cities.
+
+```{r}
+crime_2024 %>%
+  filter(year == 2024) %>%
+  arrange(desc(violentRate)) %>%
+  mutate(rank = row_number()) %>%
+  select(rank, state, violentRate) %>%
+  head(50)
+```
+
+In 2024, Alaska was still at the top (724.1), while Maine now had the lowest rate (100.1). The top of the list did not change much. Seven of the top ten states from 2015 were still in the top ten in 2024: Alaska, New Mexico, Tennessee, Arkansas, Louisiana, Missouri and South Carolina. California, Colorado and Kansas joined the top ten, replacing Nevada, Delaware and Alabama. The bottom of the list was also similar, with six states (Virginia, Kentucky, Wyoming, Connecticut, New Hampshire and Maine) in the bottom ten in both years.Florida and Vermont moved in opposite directions. Florida’s violent crime rate fell from 462.5 in 2015 to 267.1 in 2024, dropping it from 12th to 31st, one of the biggest shifts of any state. However, Florida’s numbers should be read with some caution. When the FBI switched to a new crime reporting system in 2021, many Florida police departments were slow to switch over, which left gaps in the state’s data for a few years. Some of Florida’s drop may come from how crime was recorded rather than an actual decrease in crime.Vermont went the other way. It had the lowest violent crime rate in the country in 2015 (119.3) but rose to 219.1 by 2024, moving from 50th to 40th. Even with this increase, Vermont’s rate is still lower than most states. Since Vermont has such a small population, even a small number of additional crimes can raise its rate noticeably.
+
+```{r}
+crime_2024 %>%
+  filter(year %in% c(2015, 2024)) %>%
+  select(state, year, violentRate) %>%
+  pivot_wider(names_from = year, values_from = violentRate, names_prefix = "rate_") %>%
+  mutate(change = round(rate_2024 - rate_2015, 1),
+         pct_change = round((rate_2024 - rate_2015) / rate_2015 * 100, 1)) %>%
+  arrange(desc(pct_change)) %>%
+  mutate(rank = row_number()) %>%
+  select(rank, state, rate_2015, rate_2024, change, pct_change) %>%
+  print(n = 50)
+```
+
+Most states saw violent crime go down between 2015 and 2024. In fact, only 15 states saw an increase, while 35 saw a decrease. Thirteen states saw their rate drop by more than 20%, while only seven saw it rise by more than 10%. Some states barely changed at all, as eleven states, including New York, Ohio, Alaska, Louisiana and Tennessee, stayed within 5% of their 2015 rate.One of the most interesting cases was Vermont, which saw almost an 84% increase in violent crime, by far the largest of any state. The next largest increase was Colorado at just under 50%, which is still a huge increase but much smaller than Vermont’s. However, since Vermont started with the lowest rate in the country, its increase only added up to about 100 more violent crimes per 100,000 residents. Colorado actually had the biggest increase in real terms, rising by about 158 per 100,000. Colorado was also part of a larger pattern in the West, as five of the seven states with the biggest increases were Western states (Colorado, Oregon, Montana, Washington and California). Kansas was the only other state to rise by more than 10%.Some of the states with the highest violent crime rates saw little improvement. Arkansas and New Mexico, which were both already in the top ten in 2015, rose by about 9%, while Alaska, Tennessee and Louisiana dropped by less than 5%. Because of this, all five states stayed near the top of the list in both years.On the other side, New Hampshire had the largest decrease at just over 45%. This stood out to me because New Hampshire already had one of the lowest violent crime rates in the country in 2015 and still managed to cut it nearly in half. Nevada was another interesting example. It had the second-highest violent crime rate in 2015 but saw the second-largest decrease, about 42%, which dropped it to 16th by 2024. Nevada also had the biggest drop in real terms, falling by about 296 violent crimes per 100,000 residents. Florida’s drop was almost as large (about 42%), but as I mentioned earlier, gaps in Florida’s data mean this number should be read carefully.Most of the biggest decreases were in the Northeast and parts of the South. Every New England state except Vermont saw violent crime go down, and Rhode Island (37%), Connecticut (39%) and New Hampshire (46%) were among the six largest decreases in the country. Several Southern states that had high rates in 2015 also improved a lot, including Delaware and West Virginia (both down about 28%), Alabama (24%) and Mississippi (23%). The Midwest was more mixed, as Illinois, Indiana and Nebraska saw large decreases while Kansas, Minnesota and Michigan went up.
+
+Poverty & Unemployment
+
+```{r}
+Poverty_Rate <- read.csv("State Poverty Rate.csv")
+
+poverty <- Poverty_Rate %>%
+  rename(state = State) %>%
+  filter(state %in% state.name) %>%
+  pivot_longer(-state, names_to = "year", values_to = "poverty_rate") %>%
+  mutate(year = as.integer(str_remove(year, "X")),
+         poverty_rate = poverty_rate * 100) %>%
+  group_by(state) %>%
+  arrange(year, .by_group = TRUE) %>%
+  mutate(poverty_rate = if_else(state == "Wisconsin" & year == 2020,
+                                (lag(poverty_rate) + lead(poverty_rate)) / 2,
+                                poverty_rate)) %>%
+  ungroup()
+
+nrow(poverty)
+filter(poverty, state == "Wisconsin")
+```
+
+```{r}
+crime_poverty <- crime_2024 %>%
+  left_join(poverty, by = c("state", "year"))
+```
+
+
+```{r}
+crime_poverty %>%
+  filter(year <= 2024) %>%
+  group_by(state) %>%
+  summarise(avg_poverty = round(mean(poverty_rate, na.rm = TRUE), 1),
+            avg_violent = round(mean(violentRate, na.rm = TRUE), 1),
+            .groups = "drop") %>%
+  mutate(violent_rank = min_rank(desc(avg_violent))) %>%
+  arrange(desc(avg_poverty)) %>%
+  head(50)
+```
+
+I will test this relationship later with regression analysis, but looking at the averages from 2015 to 2024, states with higher poverty rates generally had higher violent crime rates. Of the 25 states with the highest poverty rates, 19 were also in the top 25 for violent crime. The only exceptions were Mississippi, West Virginia, Kentucky, Ohio, Indiana and Oregon. The pattern was even stronger at the top, as six of the ten states with the highest poverty rates (Louisiana, New Mexico, Arkansas, Alabama, South Carolina and Tennessee) were also in the top ten for violent crime.The pattern was weaker among states with low poverty rates. New Hampshire had the lowest poverty rate in the country and the second-lowest violent crime rate, and Connecticut, Vermont and New Jersey were also in the bottom ten for violent crime. However, Maryland and Colorado both had some of the lowest poverty rates in the country but still ranked 13th and 18th for violent crime.
+A few states did not fit the pattern at all. Mississippi had the highest poverty rate in the country but ranked only 39th in violent crime, and Kentucky, which had the fifth-highest poverty rate, ranked 42nd. Alaska was the opposite, with the highest violent crime rate in the country even though its poverty rate was lower than most states. This tells me that poverty is closely connected to violent crime but is not the only factor. Other things, like how urban a state is, access to guns, alcohol use and differences in how states report crime, probably play a role too. So while the data shows a strong relationship between poverty and violent crime, it does not prove that poverty causes violent crime.
+
+```{r}
+get_unemp <- function(abb, state_name) {
+  url <- paste0("https://fred.stlouisfed.org/graph/fredgraph.csv?id=", abb, "UR")
+  d <- read.csv(url)
+  tibble(state = state_name,
+         year = as.integer(substr(d[[1]], 1, 4)),
+         unemp_rate = suppressWarnings(as.numeric(d[[2]])))
+}
+
+unemployment <- map2(state.abb, state.name, get_unemp) %>%
+  list_rbind() %>%
+  filter(year >= 2015, year <= 2024) %>%
+  group_by(state, year) %>%
+  summarise(unemp_rate = round(mean(unemp_rate, na.rm = TRUE), 1),
+            .groups = "drop")
+
+nrow(unemployment)
+head(unemployment)
+```
+
+```{r}
+crime_poverty <- crime_poverty %>%
+  left_join(unemployment, by = c("state", "year"))
+
+names(crime_poverty)
+```
+
+
+```{r}
+crime_poverty %>%
+  filter(year <= 2024) %>%
+  group_by(state) %>%
+  summarise(avg_violent = round(mean(violentRate,  na.rm = TRUE), 1),
+            avg_poverty = round(mean(poverty_rate, na.rm = TRUE), 1),
+            avg_unemp   = round(mean(unemp_rate,   na.rm = TRUE), 1),
+            .groups = "drop") %>%
+  arrange(desc(avg_violent)) %>%
+  print(n = 50)
+```
+
+Compared to poverty, unemployment had a weaker connection to violent crime. Unemployment rates also did not vary much from state to state, with ten-year averages ranging only from 2.7% in South Dakota to 6.2% in Nevada.There is still some connection. The ten states with the highest violent crime rates had an average unemployment rate of about 4.9%, compared to about 4.1% for the ten states with the lowest violent crime rates. Five of the ten states with the highest unemployment rates (Nevada, Alaska, California, New Mexico and Louisiana) were also in the top ten for violent crime. The connection was clearest for states with low unemployment, as almost all of them, mostly in the Great Plains, Mountain West and New England, were in the bottom half for violent crime. The one exception was South Dakota, which had the lowest unemployment rate in the country but ranked 20th in violent crime.
+
+Unemployment also helps explain Alaska, which poverty could not. Alaska had a below-average poverty rate but the second-highest unemployment rate in the country (5.9%). Still, unemployment alone cannot fully explain Alaska, since Nevada had even higher unemployment but about 280 fewer violent crimes per 100,000 residents.Many states did not follow this pattern. New Jersey had one of the highest unemployment rates (5.2%) but ranked 44th in violent crime, and West Virginia (5.3%) ranked 29th. Mississippi and Kentucky, which were already exceptions for poverty, also had above-average unemployment but low violent crime. Maryland and Colorado had both low poverty and low unemployment but still ranked 13th and 18th, which may be because of large cities like Baltimore and Denver, where much of their violent crime happens.These averages also include 2020, when unemployment spiked across the country because of COVID-19. States that rely heavily on tourism, like Nevada, were hit especially hard, which raised their ten-year average. Overall, unemployment does seem to be related to violent crime, but not as strongly as poverty.
+
+Potential Policy Solutions:
+
+To look at possible solutions to violent crime, I chose three state policies: red-flag laws, Clean Slate laws and Medicaid expansion. Red-flag laws allow police or family members to ask a court to temporarily take guns away from someone who is considered a danger to themselves or others, with the goal of preventing gun violence before it happens. Clean Slate laws automatically seal or clear certain criminal records after a person goes a set number of years without committing a new crime. Since a criminal record can make it hard to find a job or housing, these laws are meant to help people move on with their lives and lower the chance that they reoffend. Medicaid expansion allowed more low-income adults to get health insurance, which gives more people access to mental health care and addiction treatment, two factors that are often connected to violent crime. I chose these three policies because each one approaches violent crime in a different way: preventing gun violence, helping people with criminal records reenter society, and treating some of the health issues that can lead to crime.
+
+```{r}
+Polocies <- read.csv("state_policy_adoption_1.csv")
+head(Polocies)
+
+crime_policy <- crime_poverty %>%
+  left_join(Polocies, by = "state") %>%
+  mutate(
+    medicaid    = as.integer(!is.na(medicaid_expansion_year) & year >= medicaid_expansion_year),
+    red_flag    = as.integer(!is.na(red_flag_law_year)       & year >= red_flag_law_year),
+    clean_slate = as.integer(!is.na(clean_slate_year)        & year >= clean_slate_year)
+  )
+```
+
+1: Red Flag Laws
+
+```{r}
+pol_year <- "red_flag_law_year"
+
+comparison <- crime_policy %>%
+  filter(is.na(.data[[pol_year]]) | .data[[pol_year]] > 2024) %>%
+  group_by(year) %>%
+  summarise(comp_rate = mean(violentRate, na.rm = TRUE), .groups = "drop")
+
+crime_policy %>%
+  filter(.data[[pol_year]] >= 2016, .data[[pol_year]] <= 2023) %>%
+  left_join(comparison, by = "year") %>%
+  mutate(adopted = .data[[pol_year]],
+         period  = if_else(year < adopted, "before", "after")) %>%
+  group_by(state, adopted, period) %>%
+  summarise(state_rate = mean(violentRate, na.rm = TRUE),
+            comp_rate  = mean(comp_rate,   na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = period, values_from = c(state_rate, comp_rate)) %>%
+  mutate(state_change = round((state_rate_after - state_rate_before) / state_rate_before * 100, 1),
+         comp_change  = round((comp_rate_after  - comp_rate_before)  / comp_rate_before  * 100, 1),
+         difference   = state_change - comp_change) %>%
+  select(state, adopted, state_change, comp_change, difference) %>%
+  arrange(difference) %>%
+  print(n = 50)
+```
+
+```{r}
+no_law <- crime_policy %>%
+  filter(is.na(red_flag_law_year)) %>%
+  group_by(year) %>%
+  summarise(violentRate = mean(violentRate, na.rm = TRUE), .groups = "drop")
+
+red_flag_states <- crime_policy %>%
+  filter(red_flag_law_year >= 2016, red_flag_law_year <= 2024) %>%
+  mutate(label = paste0(state, " (", red_flag_law_year, ")"),
+         label = fct_reorder(label, red_flag_law_year))
+
+ggplot(red_flag_states, aes(year, violentRate)) +
+  geom_line(data = no_law, aes(year, violentRate),
+            color = "gray60", linewidth = 0.7, inherit.aes = FALSE) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_vline(aes(xintercept = red_flag_law_year), linetype = "dashed", color = "red") +
+  facet_wrap(~ label, scales = "free_y") +
+  scale_x_continuous(breaks = c(2015, 2020, 2024)) +
+  labs(title = "Violent crime in states with red-flag laws",
+       subtitle = "Dashed line = year the law took effect; gray = average of states without a red-flag law",
+       x = NULL, y = "Violent crimes per 100,000") +
+  theme_minimal(base_size = 9)
+```
+
+```{r}
+crime_policy %>%
+  mutate(group = if_else(!is.na(red_flag_law_year) & red_flag_law_year <= 2024,
+                         "Red-flag law", "No red-flag law")) %>%
+  group_by(year, group) %>%
+  summarise(avg_violent = mean(violentRate, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(year, avg_violent, color = group)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Red-flag law" = "steelblue", "No red-flag law" = "gray50")) +
+  scale_x_continuous(breaks = 2015:2024) +
+  labs(title = "Violent crime: states with vs. without red-flag laws",
+       x = NULL, y = "Average violent crimes per 100,000", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+To see whether red-flag laws were connected to changes in violent crime, I compared the 17 states that put a red-flag law into effect between 2016 and 2023 with states that never passed one. For each state, I compared its average violent crime rate before the law took effect with its average after, and then compared that change with the change over the same years in states without a red-flag law. A negative difference means violent crime dropped more in that state than in states without the law.The results were split almost evenly. Nine of the 17 states saw violent crime fall more than in states without the law, led by Nevada, Florida, Rhode Island, Illinois and Delaware. The other eight did worse, with the biggest differences in Vermont, Colorado and Oregon. On average, the two groups came out about even.
+
+What stood out to me was that the states that did better and worse mostly matched the regional patterns I found earlier. The states that did better were mostly on the East Coast, where violent crime was falling anyway, while most of the states that did worse were in the West (Colorado, Oregon, Washington, California and New Mexico), where violent crime was rising. This suggests the results mostly reflect where a state is located rather than the law itself. The state-by-state charts support this. Nevada, Delaware, Florida and Massachusetts were already seeing violent crime fall before their laws took effect, while Colorado’s rate was already climbing. New York’s sharp drop in 2021 and jump in 2022 is likely caused by the FBI’s change in reporting systems rather than an actual change in crime.
+
+In 2015, states with and without red-flag laws had almost the same average violent crime rate (about 365 and 363). States without red-flag laws then had higher violent crime every year after that. The biggest difference came in 2020, when violent crime jumped in states without red-flag laws (to about 408) but actually went down in states with them (to about 350). After 2020 the gap got smaller again, and by 2024 the two groups were only about 12 apart (342 and 330).
+
+Overall, I did not find clear evidence that red-flag laws lowered violent crime. However, red-flag laws are mainly meant to prevent gun suicides and mass shootings, while most violent crime is aggravated assault, so their effect on the overall violent crime rate may be too small to show up in this data. I also left out Connecticut and Indiana, which passed their laws long before 2015, and Michigan and Minnesota, whose laws did not take effect until 2024.
+
+2. Clean Slate Laws:
+
+```{r}
+pol_year <- "clean_slate_year"
+
+comparison <- crime_policy %>%
+  filter(is.na(.data[[pol_year]]) | .data[[pol_year]] > 2024) %>%
+  group_by(year) %>%
+  summarise(comp_rate = mean(violentRate, na.rm = TRUE), .groups = "drop")
+
+crime_policy %>%
+  filter(.data[[pol_year]] >= 2016, .data[[pol_year]] <= 2023) %>%
+  left_join(comparison, by = "year") %>%
+  mutate(adopted = .data[[pol_year]],
+         period  = if_else(year < adopted, "before", "after")) %>%
+  group_by(state, adopted, period) %>%
+  summarise(state_rate = mean(violentRate, na.rm = TRUE),
+            comp_rate  = mean(comp_rate,   na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = period, values_from = c(state_rate, comp_rate)) %>%
+  mutate(state_change = round((state_rate_after - state_rate_before) / state_rate_before * 100, 1),
+         comp_change  = round((comp_rate_after  - comp_rate_before)  / comp_rate_before  * 100, 1),
+         difference   = state_change - comp_change) %>%
+  select(state, adopted, state_change, comp_change, difference) %>%
+  arrange(difference) %>%
+  print(n = 50)
+```
+
+```{r}
+no_law <- crime_policy %>%
+  filter(is.na(clean_slate_year) | clean_slate_year > 2024) %>%
+  group_by(year) %>%
+  summarise(violentRate = mean(violentRate, na.rm = TRUE), .groups = "drop")
+
+crime_policy %>%
+  filter(clean_slate_year >= 2016, clean_slate_year <= 2023) %>%
+  mutate(label = paste0(state, " (", clean_slate_year, ")"),
+         label = fct_reorder(label, clean_slate_year)) %>%
+  ggplot(aes(year, violentRate)) +
+  geom_line(data = no_law, aes(year, violentRate),
+            color = "gray60", linewidth = 0.7, inherit.aes = FALSE) +
+  geom_line(color = "darkgreen", linewidth = 1) +
+  geom_vline(aes(xintercept = clean_slate_year), linetype = "dashed", color = "red") +
+  facet_wrap(~ label, scales = "free_y") +
+  scale_x_continuous(breaks = c(2015, 2020, 2024)) +
+  labs(title = "Violent crime in states with Clean Slate laws",
+       subtitle = "Dashed line = year the law passed; gray = average of states without a Clean Slate law",
+       x = NULL, y = "Violent crimes per 100,000") +
+  theme_minimal(base_size = 9)
+```
+
+```{r}
+pol_year <- "clean_slate_year"
+
+comparison <- crime_policy %>%
+  filter(is.na(.data[[pol_year]]) | .data[[pol_year]] > 2024) %>%
+  group_by(year) %>%
+  summarise(comp_rate = mean(violentRate, na.rm = TRUE), .groups = "drop")
+
+crime_policy %>%
+  filter(.data[[pol_year]] >= 2016, .data[[pol_year]] <= 2023) %>%
+  left_join(comparison, by = "year") %>%
+  mutate(adopted = .data[[pol_year]],
+         period  = if_else(year < adopted, "before", "after")) %>%
+  group_by(state, adopted, period) %>%
+  summarise(state_rate = mean(violentRate, na.rm = TRUE),
+            comp_rate  = mean(comp_rate,   na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = period, values_from = c(state_rate, comp_rate)) %>%
+  mutate(state_change = (state_rate_after - state_rate_before) / state_rate_before * 100,
+         comp_change  = (comp_rate_after  - comp_rate_before)  / comp_rate_before  * 100,
+         difference   = state_change - comp_change,
+         label = paste0(state, " (", adopted, ")")) %>%
+  ggplot(aes(difference, fct_reorder(label, difference), fill = difference < 0)) +
+  geom_col() +
+  geom_vline(xintercept = 0) +
+  scale_fill_manual(values = c("TRUE" = "darkgreen", "FALSE" = "firebrick"),
+                    labels = c("TRUE" = "Fell more than comparison", "FALSE" = "Fell less / rose more")) +
+  labs(title = "Change in violent crime after Clean Slate laws, relative to states without one",
+       x = "Difference in % change (state minus comparison states)", y = NULL, fill = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+To see whether Clean Slate laws were connected to changes in violent crime, I compared the 12 states that passed a Clean Slate law between 2018 and 2023 with states that never passed one. For each state, I compared its average violent crime rate before the law passed with its average after, and then compared that change with the change over the same years in states without a Clean Slate law. A negative difference means violent crime dropped more in that state than in states without the law.
+
+I did not find clear evidence that Clean Slate laws lowered violent crime. Only four of the 12 states saw violent crime fall more than in states without the law: Connecticut, Delaware, New Jersey and Pennsylvania. Connecticut had the best result, as its violent crime rate fell 27% after its law passed, compared to only about 6% in states without the law. Oklahoma came out about even. The other seven states did worse, especially Colorado, where violent crime rose 25% while it fell about 7% in states without the law. California, Virginia and New York also did noticeably worse. On average, Clean Slate states did about five percentage points worse than states without the law, but a lot of that comes from Colorado alone.
+
+When I looked at the state-by-state charts, it was clear that most of these results come from trends that started before the laws were passed. Colorado’s violent crime rate had been rising since 2015 and peaked in 2022, the same year its law passed, and then started going down. California and Minnesota also saw violent crime rise in the years before their laws passed. Because their rates were already climbing, their “after” averages ended up higher than their “before” averages, even though crime was actually falling after the laws passed. On the other hand, Connecticut and Delaware, the two states with the best results, were already seeing violent crime go down well before they passed their laws. Some of the jumps in the charts are also likely caused by reporting problems rather than real changes in crime. New York’s sharp drop in 2021 and jump in 2022 lines up with the FBI’s switch to a new reporting system, when New York City did not report its data, and Pennsylvania has an unusual one-year spike in 2020.
+
+There are also a few other limits to these results. The year a Clean Slate law passed is often not the year a state actually started clearing records. For example, Michigan did not start clearing records until 2023, and New York is not expected to start until 2027, so for some states the “after” years are really years before the law was in effect. States that passed their laws in 2022 or 2023 also only have one to three years of data afterward. Finally, Clean Slate laws are meant to help people with older, mostly nonviolent records avoid reoffending, so even if the laws work, their effect on a state’s overall violent crime rate may be too small to show up in this data.
+
+Overall, I did not find evidence that Clean Slate laws have lowered violent crime so far, but I also cannot rule out an effect. The main takeaway is that trends that were already happening in each state explain most of the differences, rather than the laws themselves. Pennsylvania, the first state to pass a Clean Slate law and the state with the most years of data afterward, did slightly better than states without the law, which could point to a small benefit but is not strong evidence.
+
+3: State Medicaid Expansions:
+
+```{r}
+pol_year <- "medicaid_expansion_year"
+
+comparison <- crime_policy %>%
+  filter(is.na(.data[[pol_year]]) | .data[[pol_year]] > 2024) %>%
+  group_by(year) %>%
+  summarise(comp_rate = mean(violentRate, na.rm = TRUE), .groups = "drop")
+
+crime_policy %>%
+  filter(.data[[pol_year]] >= 2016, .data[[pol_year]] <= 2023) %>%
+  left_join(comparison, by = "year") %>%
+  mutate(adopted = .data[[pol_year]],
+         period  = if_else(year < adopted, "before", "after")) %>%
+  group_by(state, adopted, period) %>%
+  summarise(state_rate = mean(violentRate, na.rm = TRUE),
+            comp_rate  = mean(comp_rate,   na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = period, values_from = c(state_rate, comp_rate)) %>%
+  mutate(state_change = round((state_rate_after - state_rate_before) / state_rate_before * 100, 1),
+         comp_change  = round((comp_rate_after  - comp_rate_before)  / comp_rate_before  * 100, 1),
+         difference   = state_change - comp_change) %>%
+  select(state, adopted, state_change, comp_change, difference) %>%
+  arrange(difference) %>%
+  print(n = 50)
+```
+
+```{r}
+crime_policy %>%
+  mutate(group = case_when(
+    is.na(medicaid_expansion_year)  ~ "Never expanded",
+    medicaid_expansion_year <= 2015 ~ "Expanded 2014-2015",
+    TRUE                            ~ "Expanded 2016-2023")) %>%
+  group_by(year, group) %>%
+  summarise(avg_violent = mean(violentRate, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(year, avg_violent, color = group)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_color_manual(values = c("Expanded 2014-2015" = "steelblue",
+                                "Expanded 2016-2023" = "purple",
+                                "Never expanded"     = "gray50")) +
+  scale_x_continuous(breaks = 2015:2024) +
+  labs(title = "Violent crime by Medicaid expansion status",
+       x = NULL, y = "Average violent crimes per 100,000", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+```{r}
+no_expansion <- crime_policy %>%
+  filter(is.na(medicaid_expansion_year)) %>%
+  group_by(year) %>%
+  summarise(violentRate = mean(violentRate, na.rm = TRUE), .groups = "drop")
+
+crime_policy %>%
+  filter(medicaid_expansion_year >= 2016, medicaid_expansion_year <= 2023) %>%
+  mutate(label = paste0(state, " (", medicaid_expansion_year, ")"),
+         label = fct_reorder(label, medicaid_expansion_year)) %>%
+  ggplot(aes(year, violentRate)) +
+  geom_line(data = no_expansion, aes(year, violentRate),
+            color = "gray60", linewidth = 0.7, inherit.aes = FALSE) +
+  geom_line(color = "purple", linewidth = 1) +
+  geom_vline(aes(xintercept = medicaid_expansion_year), linetype = "dashed", color = "red") +
+  facet_wrap(~ label, scales = "free_y") +
+  scale_x_continuous(breaks = c(2015, 2020, 2024)) +
+  labs(title = "Violent crime in states that expanded Medicaid, 2016-2023",
+       subtitle = "Dashed line = year expansion took effect; gray = average of states that never expanded",
+       x = NULL, y = "Violent crimes per 100,000") +
+  theme_minimal(base_size = 9)
+```
+
+```{r}
+crime_policy %>%
+  filter(.data[[pol_year]] >= 2016, .data[[pol_year]] <= 2023) %>%
+  left_join(comparison, by = "year") %>%
+  mutate(adopted = .data[[pol_year]],
+         period  = if_else(year < adopted, "before", "after")) %>%
+  group_by(state, adopted, period) %>%
+  summarise(state_rate = mean(violentRate, na.rm = TRUE),
+            comp_rate  = mean(comp_rate,   na.rm = TRUE), .groups = "drop") %>%
+  pivot_wider(names_from = period, values_from = c(state_rate, comp_rate)) %>%
+  mutate(state_change = (state_rate_after - state_rate_before) / state_rate_before * 100,
+         comp_change  = (comp_rate_after  - comp_rate_before)  / comp_rate_before  * 100,
+         difference   = state_change - comp_change,
+         label = paste0(state, " (", adopted, ")")) %>%
+  ggplot(aes(difference, fct_reorder(label, difference), fill = difference < 0)) +
+  geom_col() +
+  geom_vline(xintercept = 0) +
+  scale_fill_manual(values = c("TRUE" = "darkgreen", "FALSE" = "firebrick"),
+                    labels = c("TRUE" = "Fell more than comparison", "FALSE" = "Fell less / rose more")) +
+  labs(title = "Violent crime after Medicaid expansion vs. non-expansion states",
+       x = "Difference in % change (state minus non-expansion states)", y = NULL, fill = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+To see whether Medicaid expansion was connected to changes in violent crime, I focused on the 11 states that expanded Medicaid between 2016 and 2023. Most states expanded in 2014 or 2015, before my data starts, so I could not measure a before-and-after change for them. For each of the 11 states, I compared its average violent crime rate before expansion with its average after, and then compared that change with the change over the same years in the ten states that never expanded Medicaid. A negative difference means violent crime dropped more in that state than in states that never expanded.I did not find clear evidence that Medicaid expansion lowered violent crime. Only three of the 11 states saw violent crime fall more than in states that never expanded: Maine, South Dakota and Nebraska. Maine had the best result, as its violent crime rate fell about 11% after expansion, compared to about 6% in states that never expanded. Oklahoma and Missouri came out about even. The other six states did worse, especially Montana, where violent crime rose 19% after expansion while it fell about 3% in states that never expanded. Louisiana, North Carolina and Virginia also did noticeably worse. On average, these 11 states did about six percentage points worse than states that never expanded.
+
+When I compared states by expansion status, states that never expanded Medicaid had the highest average violent crime rate every year from 2015 to 2024. However, this gap was already there before most of these states expanded, so it is more likely caused by other differences between the groups, like region and poverty, than by Medicaid expansion itself. All three groups also followed the same overall pattern, with a big jump in 2020 and then a steady decline. By 2024 the gap between the groups had gotten much smaller, because violent crime fell faster after 2020 in states that never expanded.The state-by-state charts help explain some of the individual results. Louisiana and Montana, which both expanded in 2016, only have one year of data (2015) before expansion. Their “after” years, on the other hand, include the jump in violent crime in 2020 and 2021, which pushes their “after” averages up. Both states actually saw violent crime go down after it peaked around 2020 and 2021. Nebraska, Missouri and Oklahoma all saw violent crime go down in the years after they expanded, and Maine’s already low rate kept slowly falling. Some of the jumps in the charts are probably caused by reporting problems rather than real changes in crime. North Carolina has a sharp one-year drop in 2022 and then goes right back up, and South Dakota has an unusual spike in 2020. Since North Carolina and South Dakota did not expand until 2023, they also only have one or two years of data afterward.
+
+There are also a few other limits to these results. Medicaid expansion affects violent crime indirectly, mainly by giving more people access to mental health care and addiction treatment, so any effect is probably gradual and fairly small. The states that never expanded are also mostly in the South and include Florida, whose large drop in violent crime may partly come from gaps in its reporting. This makes violent crime in the comparison states look like it fell faster than it really did, which makes the expansion states look worse by comparison. Finally, 11 states is a small and very different group, so local conditions in any one state can have a big effect on its result.Overall, I did not find evidence that Medicaid expansion lowered violent crime in the states that expanded between 2016 and 2023. This is different from earlier national research, which found that the 2014 expansions were connected to about a 6% drop in violent crime. However, that research looked at a much larger group of states over a longer time period. My results are probably limited more by the small number of states that expanded later and by the disruption of 2020 than they are evidence that Medicaid expansion has no effect on crime.
+
+4: Imprisonment Rate VS Violent Crime Rate
+
+```{r}
+imprisoment_rate <- read.csv("state_imprisonment_rates_2015_2023.csv")
+
+crime_policy <- crime_policy %>%
+  left_join(imprisoment_rate, by = c("state", "year"))
+```
+
+```{r}
+state_avgs <- crime_policy %>%
+  filter(year <= 2023) %>%
+  group_by(state) %>%
+  summarise(avg_imprisonment = round(mean(imprisonment_rate, na.rm = TRUE), 1),
+            avg_violent      = round(mean(violentRate,      na.rm = TRUE), 1),
+            .groups = "drop") %>%
+  as.data.frame()
+
+state_avgs %>% arrange(desc(avg_imprisonment)) %>% print(row.names = FALSE)
+
+
+state_avgs %>% arrange(desc(avg_imprisonment)) %>% head(10) %>% print(row.names = FALSE)
+
+
+state_avgs %>% arrange(avg_imprisonment) %>% head(10) %>% print(row.names = FALSE)
+```
+
+```{r}
+state_avgs %>%
+  mutate(rank = rank(desc(avg_imprisonment)),
+         group = case_when(rank <= 10 ~ "Highest 10",
+                           rank >= 41 ~ "Lowest 10")) %>%
+  filter(!is.na(group)) %>%
+  group_by(group) %>%
+  summarise(avg_imprisonment = round(mean(avg_imprisonment), 1),
+            avg_violent      = round(mean(avg_violent), 1)) %>%
+  as.data.frame()
+```
+
+
+```{r}
+high_states <- state_avgs %>% arrange(desc(avg_imprisonment)) %>% head(10) %>% pull(state)
+low_states  <- state_avgs %>% arrange(avg_imprisonment)       %>% head(10) %>% pull(state)
+
+crime_policy %>%
+  filter(year <= 2023, state %in% c(high_states, low_states)) %>%
+  mutate(group = if_else(state %in% high_states, "Highest 10 imprisonment", "Lowest 10 imprisonment")) %>%
+  group_by(year, group) %>%
+  summarise(avg_violent = mean(violentRate, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(year, avg_violent, color = group)) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  scale_x_continuous(breaks = 2015:2023) +
+  labs(title = "Violent crime in the highest- vs. lowest-imprisonment states",
+       x = NULL, y = "Average violent crimes per 100,000", color = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+
+```{r}
+state_avgs %>%
+  filter(state %in% c(high_states, low_states)) %>%
+  mutate(group = if_else(state %in% high_states, "Highest 10 imprisonment", "Lowest 10 imprisonment"),
+         state = fct_reorder(state, avg_imprisonment)) %>%
+  pivot_longer(c(avg_imprisonment, avg_violent), names_to = "measure", values_to = "rate") %>%
+  mutate(measure = recode(measure, avg_imprisonment = "Imprisonment rate",
+                          avg_violent      = "Violent crime rate")) %>%
+  ggplot(aes(rate, state, fill = measure)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ group, scales = "free_y") +
+  scale_fill_manual(values = c("Imprisonment rate" = "gray40", "Violent crime rate" = "firebrick")) +
+  labs(title = "Imprisonment and violent crime, 2015-2023 averages",
+       x = "Rate per 100,000", y = NULL, fill = NULL) +
+  theme_minimal() +
+  theme(legend.position = "top")
+```
+
+To see whether states that put more people in prison have less violent crime, I compared the ten states with the highest average imprisonment rates from 2015 to 2023 with the ten states with the lowest. The states with the highest rates were mostly in the South and Southwest: Louisiana, Oklahoma, Mississippi, Arkansas, Arizona, Texas, Georgia, Kentucky, Alabama and Missouri. The states with the lowest rates were mostly in the Northeast, including Maine, Massachusetts, Rhode Island, Vermont, New Jersey, New Hampshire and New York, along with Minnesota, Utah and Hawaii.There was a big difference in how often these two groups used prison. The highest-imprisonment states held an average of 537.7 prisoners per 100,000 residents, more than three times the average of 171.8 in the lowest-imprisonment states. If longer and more frequent prison sentences actually prevented violent crime, you would expect the highest-imprisonment states to have less violent crime. Instead, I found the opposite. The highest-imprisonment states had an average violent crime rate of 435.4 per 100,000, compared to 236.0 in the lowest-imprisonment states, a difference of about 200 violent crimes per 100,000 residents.
+
+This gap stayed large the entire time. Violent crime in the highest-imprisonment states stayed between about 415 and 465 every year, jumping in 2020 before ending up about where it started by 2023. The lowest-imprisonment states stayed between about 225 and 250 the whole time, dropping slightly over the years and barely changing in 2020. So even though the highest-imprisonment states put far more people in prison, their violent crime did not improve over these nine years.This pattern did not hold for every state, though. Mississippi and Kentucky had some of the highest imprisonment rates in the country but fairly low violent crime rates (259.1 and 234.0). On the other side, Massachusetts and New York had some of the lowest imprisonment rates but violent crime rates near the middle of the country (338.8 and 368.9). Looking at all 50 states, Alaska and New Mexico stood out even more. They had the two highest violent crime rates in the country but ranked only 37th and 31st in imprisonment. Across all 50 states, the correlation between imprisonment and violent crime was 0.37, which is a weak to moderate positive relationship. This means imprisonment rates explain only about 13% of the differences in violent crime between states.
+
+These results do not mean that prison causes violent crime. The more likely explanation is that states with more violent crime send more people to prison, and that the two groups are different in other important ways, like poverty, which is much higher in most of the highest-imprisonment states. However, the results do fit with research showing that harsher punishments do little to prevent crime, and that the chance of getting caught matters much more than how long the sentence is. Overall, putting more people in prison has not made the highest-imprisonment states any safer than states that imprison far fewer people.
+
+Regression Analysis:
+
+```{r}
+reg_data <- crime_policy %>%
+  filter(year <= 2023) %>%
+  mutate(imprison_100 = imprisonment_rate / 100)
+```
+
+Model 1.
+```{r}
+model1a <- lm(violentRate ~ poverty_rate, data = reg_data)
+summary(model1a)
+```
+
+The model looked at whether states with more poverty also have more violent crime, using data for all 50 states for every year from 2015 to 2023. For every 1% increase in a state’s poverty rate, the model predicts about 22 more violent crimes per 100,000 people. For example, a state with 15% poverty would be expected to have about 110 more violent crimes per 100,000 people than a state with 10% poverty. The result is very unlikely to be due to chance. The standard error (2.2) is small compared to the result (22), which means the estimate is pretty precise. The t value (9.98) and the p-value (less than 0.001) both show that the link between poverty and violent crime is statistically significant. The R-squared of 0.18 means poverty explains about 18% of the differences in violent crime between states. That is a lot for one factor, but it also means about 82% comes from other things. The F-statistic (99.65) also confirms that the model as a whole is useful.
+
+However, the model’s predictions were not very accurate. The residual standard error of 135 means its predictions were usually off by about 135 violent crimes per 100,000 people, and some were off by much more. One prediction was 565 too low and another was 299 too high. The biggest misses are likely states like Alaska, which has much more violent crime than its poverty rate would predict, and Mississippi and Kentucky, which have high poverty but low violent crime. Overall, states with more poverty clearly tend to have more violent crime, but poverty alone cannot explain everything, and other factors also matter.
+
+Model 2
+
+```{r}
+model1b <- lm(violentRate ~ unemp_rate, data = reg_data)
+summary(model1b)
+```
+
+The second model looked at whether states with higher unemployment also have more violent crime, using the same data for all 50 states from 2015 to 2023. For every 1% increase in a state’s unemployment rate, the model predicts about 23 more violent crimes per 100,000 people. For example, a state with 6% unemployment would be expected to have about 68 more violent crimes per 100,000 people than a state with 3% unemployment. The intercept (269.7) is the prediction for a state with no unemployment, which does not exist, so like in the poverty model it is mainly just where the line starts.
+
+The result is statistically significant. The t value (5.37) and the p-value (less than 0.001) show that the link between unemployment and violent crime is very unlikely to be due to chance. However, the standard error (4.2) is about twice as large as in the poverty model, so the estimate is less precise. The bigger difference is in the R-squared. At 0.06, unemployment explains only about 6% of the differences in violent crime between states, about one-third as much as poverty (18%). The F-statistic (28.78) confirms the model is useful, but it is much lower than the poverty model’s (99.65).
+
+The predictions were also less accurate than in the poverty model. The residual standard error of 144.7 means the predictions were usually off by about 145 violent crimes per 100,000 people, compared to 135 for poverty. One prediction was 483 too low and another was 291 too high. The biggest misses are likely states like Alaska and New Mexico, which have much more violent crime than their unemployment would predict, and states like Maine and New Jersey, which have less. Overall, unemployment is connected to violent crime, but much more weakly than poverty. Even though the effect of a 1% change is about the same for both, unemployment rates do not vary much between states, so it does far less to explain why some states have more violent crime than others.
+
+Model 3
+
+```{r}
+model2 <- feols(violentRate ~ poverty_rate + unemp_rate + imprison_100 +
+                  red_flag + clean_slate + medicaid | state + year,
+                data = reg_data, cluster = ~state)
+summary(model2)
+```
+
+The third model looked at all six factors together: poverty, unemployment, imprisonment, red-flag laws, Clean Slate laws and Medicaid expansion. Unlike the first two models, which compared states with each other, this model compared each state with itself over time. It asked whether violent crime went up or down in a state when its poverty rate, unemployment rate or imprisonment rate changed, or when it passed one of the three policies. The model also controlled for things that affected every state in the same year, like the jump in violent crime in 2020.
+
+None of the six factors had a statistically significant effect on violent crime, since all of their p-values were above 0.05. Poverty (−0.3) and unemployment (−1.3) had almost no effect once each state was compared with itself. That is very different from the first two models, which suggests poverty and unemployment are connected to long-term differences between states, but year-to-year changes in a state’s poverty or unemployment rate do not quickly change its violent crime. Imprisonment had a positive effect (20.7), meaning 100 more prisoners per 100,000 people went with about 21 more violent crimes, not fewer. It was not statistically significant, but it shows no sign that putting more people in prison lowers violent crime. Red-flag laws went with about 15 fewer violent crimes per 100,000 people, which is the direction you would expect if the laws work, but this was also not statistically significant. Clean Slate laws went with about 21 more violent crimes, which matches my earlier finding that trends already happening in those states made their results look worse. Medicaid expansion had almost no effect (−1.2), probably because only 11 states expanded during these years.
+
+The model fit the data very well overall (adjusted R-squared of 0.94), but almost all of that came from controlling for each state and each year, not from the six factors. The within R-squared of 0.04 shows the six factors together only explained about 4% of the changes in violent crime within states. In other words, most of the differences in violent crime come from long-term differences between states and from national trends that affected every state at once, which leaves little for these factors to explain. This does not prove the policies have no effect. With only nine years of data and a small number of states passing each policy, the model may not have enough information to pick up smaller effects.
+
+Conclusion
+
+Between 2015 and 2024, violent crime fell in most of the country. Thirty-five of the 50 states saw their violent crime rate go down, and many saw large decreases, especially in the Northeast and parts of the South. However, the decline was not shared everywhere. Several Western states, including Colorado, Oregon, Montana, Washington and California, saw violent crime rise, while some of the states with the highest violent crime rates, like Alaska, New Mexico, Tennessee, Arkansas and Louisiana, saw little improvement and stayed near the top of the list in both 2015 and 2024.
+
+Of all the factors I looked at, poverty had the strongest connection to violent crime. States with higher poverty rates generally had higher violent crime rates, and poverty by itself explained about 18% of the differences in violent crime between states. Unemployment was also connected to violent crime, but much more weakly, explaining only about 6%. Imprisonment did not appear to make states safer. The ten states with the highest imprisonment rates had about 200 more violent crimes per 100,000 people than the ten states with the lowest rates, and their violent crime did not improve over time despite putting far more people in prison. This fits with research showing that the chance of getting caught does more to prevent crime than harsher punishments.
+
+I did not find clear evidence that red-flag laws, Clean Slate laws or Medicaid expansion lowered violent crime. Red-flag laws had the most mixed results, with about half of the states doing better than states without the law and half doing worse. Only four of the 12 Clean Slate states and three of the 11 Medicaid expansion states did better than states without those policies. When I tested all of these factors together in my final model, comparing each state with itself over time, none of them had a statistically significant effect. Instead, most of the differences between states seemed to come from trends that were already happening before the policies were passed, as well as regional patterns, like violent crime falling in the Northeast and rising in the West.
+
+There are several limits to these findings. The FBI’s switch to a new crime reporting system in 2021 left gaps in some states’ data, especially Florida and New York. Many of the policies were also passed recently, so some states only have one to three years of data afterward, and some Clean Slate laws were not actually in effect until years after they passed. Only a small number of states passed each policy during this period, which makes it harder to find an effect even if one exists. Finally, my results show connections between these factors and violent crime, but they do not prove that any one factor causes it.
+
+Overall, my research suggests that violent crime is closely tied to long-term conditions in each state, especially poverty, and that the policies I examined have not had a clear short-term effect on violent crime. As I said at the beginning, these are not the only factors that affect violent crime. Future research could look at other factors I was not able to fully examine here, such as police spending, gun ownership and mental health care. It could also look at recidivism directly by following people whose records were cleared or who gained health coverage, and use a longer time period to give these policies more time to show an effect.
